@@ -13,6 +13,8 @@ use Filament\Resources\Table;
 use Filament\Tables;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Forms\Components\Select;
+use Filament\Notifications\Notification;
+
 
 use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
 use Filament\Tables\Actions\EditAction;
@@ -21,8 +23,17 @@ use Filament\Forms\Components\DatePicker;
 use Illuminate\Database\Eloquent\Builder;
 use Filament\Tables\Actions\ViewAction;
 use Filament\Actions\ImportAction;
+use Filament\Forms\Components\Toggle;
 use Konnco\FilamentImport\Actions\ImportAction as ActionsImportAction;
 use Konnco\FilamentImport\Import;
+use Filament\Tables\Columns\CheckboxColumn;
+use Illuminate\Support\Facades\Auth;
+use Filament\Forms\Components\Grid;
+use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Get;
+use Illuminate\Validation\Rule;
+
 
 class ClientResource extends Resource
 {
@@ -43,17 +54,30 @@ class ClientResource extends Resource
     {
         return $form
             ->schema([
+
                 Forms\Components\TextInput::make('client_name')
                     ->label('اسم العميل'),
 
                 Forms\Components\TextInput::make('client_phone')
-                    ->label('رقم الهاتف'),
+                    ->label('رقم الهاتف')
+                    ->required()
+                    // ->unique(ignoreRecord: true)
+                    ->rule('unique:clients,client_phone,' . (request()->route('record') ? request()->route('record') : '')),
+
+
+                // ->rule('unique:clients,client_phone') // تحقق من عدم التكرار
+
+
                 Forms\Components\TextInput::make('storeName_ar')
                     ->label(' اسم المتجر بالعربية'),
+
+
                 Forms\Components\TextInput::make('website')
                     ->label('رابط الموقع')
-                    ->url() // يضيف تحقق أن القيمة URL
-                    ->placeholder('https://example.com'),
+                    ->autocomplete('off')
+                    ->placeholder('https://example.com')
+                    ->unique(ignoreRecord: true),
+
                 // Forms\Components\TextInput::make('storeName_en')
                 //     ->label(' اسم المتجر بالانجليزية'),
 
@@ -90,6 +114,18 @@ class ClientResource extends Resource
                     ]),
 
 
+
+                Forms\Components\Select::make('status')
+                    ->label('حالة العميل')
+                    ->placeholder('حالة العميل')
+                    ->options([
+                        "0" => 'لم يتم التواصل',
+                        "1" => 'تم التواصل',
+
+                    ])
+                    ->default('0'),
+
+
                 // Forms\Components\Select::make('store_rate')
                 //     ->label('تقييم المتجر')
                 //     ->placeholder("تقييم المتجر")
@@ -112,47 +148,118 @@ class ClientResource extends Resource
                 //     ->label('صورة المتجر'),
 
 
-                Forms\Components\Select::make('status')
-                    ->hint("هل العميل مهتم أم لا؟!")
-                    ->label('الحالة')
-                    ->options([
-                        'pending' => 'لم يتم التواصل',
-                        'approved' => 'مهتم',
-                        'rejected' => 'غير مهتم',
-                    ])
-                    ->placeholder('حالة العميل'),
+
                 Forms\Components\Textarea::make('notes')
                     ->label('ملاحظات')
                     ->placeholder('اكتب الملاحظات هنا...'),
 
 
+                Section::make(' التعليقات')
+                    ->schema([
+                        Forms\Components\Repeater::make('comments')
+                            ->label('التعليقات')
+                            ->schema([
+
+
+                                Forms\Components\Textarea::make('content')
+                                    ->label("تعليق")
+                                    ->rows(3)
+                                    ->helperText('تمت الإضافة بواسطة: ' . Auth::user()?->name ?? 'غير معروف')
+                                    ->columnSpan('full')
+                                    ->required()
+
+
+
+                            ])
+                            ->default([])
+                            ->columnSpan('full')
+                            ->columns(2)
+                            ->createItemButtonLabel('إضافة تعليق')
+                            ->afterStateUpdated(function ($component, $state) {
+                                // هذه الطريقة يتم تنفيذها عند تحديث الحالة بعد إضافة العنصر
+                                if ($state) {
+                                    Notification::make()
+                                        ->title('تم إضافة التعليق بنجاح')
+                                        ->message('تم إضافة تعليقك إلى النظام بنجاح.')
+                                        ->success()
+                                        ->send();
+                                }
+                            })
+                    ])
+                    ->collapsible(), // اختياري لجعله قابل للطي
 
 
             ]);
     }
 
+
+
+
     public static function table(Table $table): Table
     {
         return $table
             ->columns([
-              
+
+                Tables\Columns\TextColumn::make('id')
+                    ->label('ID')
+                    ->hidden(), // نخبي الآي دي لكن يبقى موجود بالصف
+
+
+                Tables\Columns\TextColumn::make('serial')
+                    ->label('م')
+                    ->formatStateUsing(function ($state, $record) {
+                        static $index = 0;
+                        return ++$index;
+                    }),
+
                 Tables\Columns\TextColumn::make('client_name')
                     ->label(' اسم العميل')
                     ->searchable()
-                    ->sortable(),
+                    ->sortable()
+                    ->extraAttributes(function ($record) {
+                        return [
+                            'x-data' => '{}',
+                            'x-on:click' => "localStorage.setItem('bookmark_row_id', '{$record->id}'); window.dispatchEvent(new Event('storage'));",
+                            'class' => 'cursor-pointer bookmarkable-cell',
+                        ];
+                    }),
+
+
+                Tables\Columns\TextColumn::make('status')
+                    ->label('الحالة')
+                    ->action(function ($record) {
+                        $record->status = !$record->status;
+                        $record->save();
+                    })
+                    ->getStateUsing(function ($record) {
+                        if ($record->status == 1) {
+                            return '😀 تم التواصل';
+                        } else {
+                            return '🥲 لم يتم التواصل';
+                        }
+                    })
+                    ->extraAttributes(function ($record) {
+                        // إضافة تنسيقات CSS حسب الحالة
+                        return $record->status == 1
+                            ? ['class' => 'sucess-label']  // اللون الأخضر عند تم التواصل
+                            : ['class' => 'failed-label'];   // اللون الأحمر عند لم يتم التواصل
+                    }),
+
+
                 Tables\Columns\TextColumn::make('client_phone')
                     ->label('رقم الجوال')
                     ->searchable()
+
                     ->sortable(),
                 Tables\Columns\TextColumn::make('storeName_ar')
                     ->label('اسم المتجر بالعربي')
                     ->searchable()
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make("store_category")
-                    ->label("تصنيفات المتجر")
-                    ->searchable()
-                    ->sortable(),
+                // Tables\Columns\TextColumn::make("store_category")
+                //     ->label("تصنيفات المتجر")
+                //     ->searchable()
+                //     ->sortable(),
 
                 // Tables\Columns\TextColumn::make('notes')
                 //     ->label('ملاحظات'),
@@ -180,10 +287,11 @@ class ClientResource extends Resource
 
 
 
-                // Tables\Columns\TextColumn::make('created_date')
-                //     ->label('تاريخ الإنشاء')
+                Tables\Columns\TextColumn::make('created_date')
+                    ->label('تاريخ الإنشاء')
 
-                //     ->formatStateUsing(fn($state, $record) => $record->created_at->format('Y-m-d')),
+                    ->formatStateUsing(fn($state, $record) => $record->created_at->format('Y-m-d', 'H:i:s')),
+                // Tables\Columns\TextColumn::make('created_date')
 
                 // Tables\Columns\TextColumn::make('created_time')
                 //     ->label('وقت الإنشاء')
@@ -192,17 +300,17 @@ class ClientResource extends Resource
 
 
 
-                Tables\Columns\TextColumn::make('created_diff')
-                    ->label('منذ الإنشاء')
-                    ->searchable()
-                    ->sortable()
-                    ->formatStateUsing(fn($state, $record) => $record->created_at->diffForHumans()),
+                // Tables\Columns\TextColumn::make('created_diff')
+                //     ->label('منذ الإنشاء')
+                //     ->searchable()
+                //     ->sortable()
+                //     ->formatStateUsing(fn($state, $record) => $record->created_at->diffForHumans()),
 
 
                 Tables\Columns\TextColumn::make('user.name')
                     ->label('اسم المستخدم')
-                    ->sortable()
-                    ->searchable(),
+                    ->sortable(),
+
 
 
 
@@ -211,6 +319,7 @@ class ClientResource extends Resource
 
                 Tables\Columns\TextColumn::make('whatsapp')
                     ->label('واتساب')
+                    ->extraAttributes(['class' => 'w-1/6'])  // عرض العمود 25% من المساحة
                     ->getStateUsing(function ($record) {
                         $client_phone = preg_replace('/[^0-9]/', '', $record->client_phone);
                         $url = 'https://wa.me/' . $client_phone . '?text=' . urlencode('السلام عليكم، ممكن أساعدك؟');
@@ -218,22 +327,49 @@ class ClientResource extends Resource
                         return <<<HTML
             <a href="{$url}" target="_blank"
                 style="
-                    background-color:rgb(45, 177, 93);
-                    color: white;
-                    padding: 6px 12px;
-                    border-radius: 6px;
-                    font-size: 14px;
-                    text-decoration: none;
+                    font-size: 1.8rem;
+                    color:green;
+
                     display: inline-block;
                 ">
-                زيارة الواتساب
+                 <i class="fa-brands fa-whatsapp"></i>
+
+            </a>
+                 <a href="{$record->website}" target="_blank"
+                style="
+                    font-size: 1.8rem;
+                    padding-right: 5px;
+                    color:#4646ff;
+                    display: inline-block;
+                ">
+                  <i class="fa-solid fa-earth-americas"></i>
             </a>
         HTML;
                     })
+
                     ->html(),
 
 
+
+
+
+
+                //         Tables\Columns\TextColumn::make('website')
+                //             ->label('الموقع')
+                //             ->getStateUsing(function ($record) {
+
+
+                //                 return <<<HTML
+
+                // HTML;
+                //             })
+                //             ->html(),
+
+
             ])
+
+
+
             ->filters([
                 Filter::make('store_category')
                     ->form([
@@ -274,9 +410,8 @@ class ClientResource extends Resource
                             ->label('حالة العميل')
                             ->options([
 
-                                'pending' => 'لم يتم التواصل',
-                                'approved' => 'مهتم',
-                                'rejected' => 'غير مهتم',
+                                "0" => 'لم يتم التواصل',
+                                "1" => 'تم التواصل',
 
                             ])
                     ])
@@ -306,12 +441,11 @@ class ClientResource extends Resource
 
 
             ])
+            ->defaultSort('created_at', 'desc'); // الأحدث أولاً
 
 
 
-            ->bulkActions([
-                ExportBulkAction::make()
-            ]);
+
     }
 
     public static function getRelations(): array
@@ -321,6 +455,7 @@ class ClientResource extends Resource
         ];
     }
 
+
     public static function getPages(): array
     {
         return [
@@ -329,6 +464,13 @@ class ClientResource extends Resource
             'edit' => Pages\EditClient::route('/{record}/edit'),
             // 'view' => Pages\ViewClient::route('/{record}'), // 👈 هذا السطر الجديد
 
+        ];
+    }
+
+    public static function getValidationMessages(): array
+    {
+        return [
+            'client_phone.unique' => 'رقم الجوال هذا موجود بالفعل في النظام، يرجى إدخال رقم آخر.',
         ];
     }
 }

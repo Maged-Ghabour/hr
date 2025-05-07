@@ -16,12 +16,10 @@ use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use App\Filament\Resources\ClientResource\Widgets\StatsOverview;
 use App\Filament\Resources\ClientResource\Widgets\ClientsChart;
-
-
-
-
-
-
+use App\Filament\Resources\ClientResource\Widgets\ContactedClientsChart;
+use App\Filament\Resources\ClientResource\Widgets\ContactedClientsUserChart;
+use App\Filament\Resources\ClientResource\Widgets\UserChart;
+use App\Models\User;
 
 return [
 
@@ -155,6 +153,10 @@ return [
             // Widgets\FilamentInfoWidget::class,
             StatsOverview::class,
             ClientsChart::class,
+            UserChart::class,
+            ContactedClientsChart::class,
+            ContactedClientsUserChart::class,
+
 
         ],
     ],

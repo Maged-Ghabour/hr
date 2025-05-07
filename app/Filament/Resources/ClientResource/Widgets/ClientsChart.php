@@ -49,10 +49,13 @@ class ClientsChart extends BarChartWidget
                     'borderColor' => 'rgba(34,197,94,1)',
                     'backgroundColor' => 'rgba(34,197,94,0.2)',
                 ],
+
             ],
             'labels' => $clients->pluck('date')->map(fn($date) => \Carbon\Carbon::parse($date)->translatedFormat('d M'))->toArray(),
         ];
     }
+
+
 
     protected function getType(): string
     {
@@ -60,7 +63,7 @@ class ClientsChart extends BarChartWidget
     }
     protected function getHeight(): string
     {
-        return '300px'; // ارتفاع المخطط
+        return '800px'; // ارتفاع المخطط
     }
     protected function getWidth(): string
     {

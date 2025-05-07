@@ -16,4 +16,13 @@ class Client extends Model implements HasMedia
     {
         return $this->belongsTo(User::class); // علاقة `Client` بـ `User`
     }
+    // العلاقة مع الاجتماعات
+    public function meetings()
+    {
+        return $this->hasMany(Meeting::class);
+    }
+
+    protected $casts = [
+        'comments' => 'array',
+    ];
 }
